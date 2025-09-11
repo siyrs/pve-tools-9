@@ -585,7 +585,7 @@ cpu_add() {
 
     log_step "开始安装所需工具..."
     # 输入需要安装的软件包
-    packages=(lm-sensors nvme-cli sysstat linux-cpupower)
+    packages=(lm-sensors nvme-cli sysstat linux-cpupower apcupsd)
 
     # 查询软件包，判断是否安装
     for package in "${packages[@]}"; do
@@ -635,6 +635,11 @@ cpu_add() {
         fi
         /etc/init.d/kmod start
         rm /tmp/sensors
+
+        # 启动APC UPS
+        systemctl enable apcupsd
+        systemctl start apcupsd
+
         # 驱动信息配置完成
     fi
 
@@ -659,7 +664,40 @@ cpu_add() {
     my $nvme0_io = `iostat -d -x -k 1 1 | grep -E "^nvme0"`;
     $res->{nvme0_status} = $nvme0_temperatures . $nvme0_io;
 
+    # ---------- begin nvme 多盘安全采集 ----------
+    my $nvme_status = "";
+
+    # 安全列出所有 nvme 设备
+    my @nvmes = glob("/dev/nvme[0-9]");
+
+    foreach my $dev (@nvmes) {
+        # 只允许 /dev/nvmeX 这种名字
+        if ($dev =~ m{^(/dev/nvme\d+)$}) {
+            $dev = $1;  # 解除 taint
+
+            # 获取 SMART 信息
+            my $nvme_info = qx(smartctl -a $dev);
+            $nvme_info =~ s/\r//g; # 去掉 CR
+            $nvme_info = join("\n", grep { /Model Number|Capacity|Temperature:|Available Spare|Percentage Used|Data Units Read|Data Units Written|Power Cycles|Power On Hours|Unsafe Shutdowns|Integrity Errors/ } split(/\n/, $nvme_info));
+
+            # 获取 IO 信息
+            my $nvme_io = qx(iostat -d -x -k 1 1);
+            $nvme_io =~ s/\r//g;
+            $nvme_io = join("\n", grep { /^nvme\d+/ } split(/\n/, $nvme_io));
+
+            # 拼接
+            $nvme_status .= "DEVICE: $dev\n" . $nvme_info . "\n" . $nvme_io . "\n---\n";
+        }
+    }
+
+    $res->{nvme_status} = $nvme_status;
+    # ---------- end nvme 多盘安全采集 ----------
+
+
+    # 获取硬盘信息
     $res->{hdd_temperatures} = `smartctl -a /dev/sd?|grep -E "Device Model|Capacity|Power_On_Hours|Temperature"`;
+
+    $res->{ups_status} = `apcaccess status`;
 
     my $powermode = `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor && turbostat -S -q -s PkgWatt -i 0.1 -n 1 -c package | grep -v PkgWatt`;
     $res->{cpupower} = $powermode;
@@ -945,10 +983,8 @@ EOF
                         }
                     }
 
-                    // 输出多个 NVMe 硬盘
-                    let outputs = [];
+                    let output = '';
                     for (const [i, nvme] of data.entries()) {
-                        let output = '';
                         if (i > 0) output += '<br><br>';
 
                         if (nvme.Models.length > 0) {
@@ -1076,14 +1112,96 @@ EOF
                         }
                     //output = output.slice(0, -3);
                 }
-                outputs.push(output);
+                return output.replace(/\n/g, '<br>');
             }
-            return outputs.length ? outputs.join('<br><br>') : '提示: 未安装 NVME 或已直通 NVME 控制器！';
+
+            return output;
         } else {
             return `提示: 未安装 NVME 或已直通 NVME 控制器！`;
         }
     }
 },
+
+// NVME 硬盘（多盘解析版）
+{
+    itemId: 'nvme-status',
+    colspan: 2,
+    printBar: false,
+    title: gettext('NVME硬盘'),
+    textField: 'nvme_status',   // 注意：后端字段名是 nvme_status
+    renderer: function(value) {
+        if (value.length > 0) {
+            let devices = value.split(/---/);
+            let outputs = [];
+            for (const dev of devices) {
+                if (dev.trim().length === 0) continue;
+
+                // 设备名
+                let devNameMatch = dev.match(/DEVICE:\s*(nvme\d+)/);
+                let devName = devNameMatch ? devNameMatch[1] : '未知NVMe';
+
+                // 型号
+                let modelMatch = dev.match(/Model Number:\s*(.+)/);
+                let model = modelMatch ? modelMatch[1].trim() : devName;
+
+                // 容量
+                let capMatch = dev.match(/Capacity.*\[(.+)\]/);
+                let capacity = capMatch ? capMatch[1].replace(/ |,/g, '') : "未知";
+
+                // 温度
+                let tempMatch = dev.match(/Temperature:\s*([\d]+)/);
+                let temperature = tempMatch ? tempMatch[1] : "未知";
+
+                // 寿命
+                let usedMatch = dev.match(/Percentage Used:\s*(\d+)/);
+                let life = usedMatch ? (100 - parseInt(usedMatch[1])) + "%" : "未知";
+
+                // 已读 / 已写
+                let readMatch = dev.match(/Data Units Read.*\[(.+)\]/);
+                let writtenMatch = dev.match(/Data Units Written.*\[(.+)\]/);
+                let readData = readMatch ? readMatch[1].trim() : "未知";
+                let writtenData = writtenMatch ? writtenMatch[1].trim() : "未知";
+
+                // 通电次数 / 小时 / 不安全断电
+                let cycleMatch = dev.match(/Power Cycles:\s*(\d+)/);
+                let cycles = cycleMatch ? cycleMatch[1] : "未知";
+                let hoursMatch = dev.match(/Power On Hours:\s*(\d+)/);
+                let hours = hoursMatch ? hoursMatch[1] : "未知";
+                let unsafeMatch = dev.match(/Unsafe Shutdowns:\s*(\d+)/);
+                let unsafes = unsafeMatch ? unsafeMatch[1] : "未知";
+
+                // I/O 状态 (iostat 输出)
+                let ioMatch = dev.match(/nvme\d+\s+([\d\.]+)/g);
+                let ioText = "";
+                if (ioMatch) {
+                    let ioLine = dev.match(/nvme\d+\s+([\d\.\s]+)/);
+                    if (ioLine) {
+                        let ioArray = ioLine[0].trim().split(/\s+/);
+                        // iostat 列： tps kB_read/s kB_wrtn/s kB_read kB_wrtn rrqm/s wrqm/s r/s w/s rMB/s wMB/s await ...
+                        let rMB = (parseFloat(ioArray[5]) / 1024).toFixed(2);
+                        let wMB = (parseFloat(ioArray[6]) / 1024).toFixed(2);
+                        let rAwait = ioArray[9] || "?";
+                        let wAwait = ioArray[10] || "?";
+                        let util = ioArray[ioArray.length - 1] || "?";
+                        ioText = `I/O: 读-速度${rMB}MB/s, 延迟${rAwait}ms / 写-速度${wMB}MB/s, 延迟${wAwait}ms | 负载${util}%`;
+                    }
+                }
+
+                outputs.push(
+                    `<strong>${model}</strong> (${devName})<br>
+                     容量: ${capacity} | 寿命: ${life} (已读${readData}, 已写${writtenData}) | 温度: <strong>${temperature}°C</strong><br>
+                     ${ioText}<br>
+                     通电: ${cycles}次, 不安全断电${unsafes}次, 累计${hours}小时`
+                );
+            }
+            return outputs.join('<br><br>');
+        } else {
+            return '提示: 未安装 NVME 或已直通 NVME 控制器！';
+        }
+    }
+},
+
+
     // 检测不到相关参数的可以注释掉---需要的注释本行即可  */
 
     // SATA硬盘温度
@@ -1166,6 +1284,40 @@ EOF
                     return outputs.length ? outputs.join('<br>') : '提示: 检测到硬盘但无法识别详细信息';
             } else {
                 return '提示: 未安装硬盘或已直通硬盘控制器';
+        }
+    }
+},
+
+// UPS 信息
+{
+    itemId: 'ups-status',
+    colspan: 2,
+    printBar: false,
+    title: gettext('UPS 信息'),
+    textField: 'ups_status',
+    renderer: function(value) {
+        if (value.length > 0) {
+            try {
+                const DATE    = value.match(/DATE\s*:\s*([\d\-]+ \d+:\d+:\d+)/)[1];
+                const STATUS  = value.match(/STATUS\s*:\s*([A-Z]+)/)[1];
+                const LINEV   = value.match(/OUTPUTV\s*:\s*([\d\.]+)/)[1];
+                const LOADPCT = value.match(/LOADPCT\s*:\s*([\d\.]+)/)[1];
+                const BCHARGE = value.match(/BCHARGE\s*:\s*([\d\.]+)/)[1];
+                const TIMELEFT= value.match(/TIMELEFT\s*:\s*([\d\.]+)/)[1];
+                const MODEL   = value.match(/MODEL\s*:\s*(.+)/)[1].trim();
+
+                return `型号：${MODEL}<br>
+                        更新时间：${DATE}<br>
+                        状态：${STATUS}<br>
+                        输出电压：${LINEV} V<br>
+                        负载：${LOADPCT} %<br>
+                        电池电量：${BCHARGE} %<br>
+                        剩余供电时间：${TIMELEFT} 分钟`;
+            } catch(e) {
+                return 'UPS 信息解析失败:'+value;
+            }
+        } else {
+            return '提示: 未检测到 UPS 或 apcaccess 未运行';
         }
     }
 },
