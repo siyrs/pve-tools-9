@@ -840,11 +840,11 @@ EOF
     // /* 检测不到相关参数的可以注释掉---需要的注释本行即可
     // NVME硬盘温度
     {
-        itemId: 'nvme-status',
+        itemId: 'nvme0-status',
         colspan: 2,
         printBar: false,
         title: gettext('NVME硬盘'),
-        textField: 'nvme_status',
+        textField: 'nvme0_status',
         renderer:function(value){
             if (value.length > 0) {
                 value = value.replace(/Â/g, '');
@@ -947,94 +947,140 @@ EOF
 
                     // 输出多个 NVMe 硬盘
                     let outputs = [];
-                    for (const nvme of data) {
-                        let out = '';
+                    for (const [i, nvme] of data.entries()) {
+                        let output = '';
+                        if (i > 0) output += '<br><br>';
+
                         if (nvme.Models.length > 0) {
-                            out += `<strong>${nvme.Models[0]}</strong><br>`;
+                            output += `<strong>${nvme.Models[0]}</strong>`;
+
+                            if (nvme.Integrity_Errors.length > 0) {
+                                for (const nvmeIntegrity_Error of nvme.Integrity_Errors) {
+                                    if (nvmeIntegrity_Error != 0) {
+                                        output += ` (`;
+                                        output += `0E: ${nvmeIntegrity_Error}-故障！`;
+                                        if (nvme.Available_Spares.length > 0) {
+                                            output += ', ';
+                                            for (const Available_Spare of nvme.Available_Spares) {
+                                                output += `备用空间: ${Available_Spare}`;
+                                            }
+                                        }
+                                        output += `)`;
+                                    }
+                                }
+                            }
+                            output += '<br>';
                         }
+
                         if (nvme.Capacitys.length > 0) {
-                            out += `容量: ${nvme.Capacitys[0].replace(/ |,/gm, '')}`;
+                            for (const nvmeCapacity of nvme.Capacitys) {
+                                output += `容量: ${nvmeCapacity.replace(/ |,/gm, '')}`;
+                            }
                         }
+
                         if (nvme.Useds.length > 0) {
-                            out += ` | 寿命: <strong>${100-Number(nvme.Useds[0])}%</strong>`;
+                            output += ' | ';
+                            for (const nvmeUsed of nvme.Useds) {
+                                output += `寿命: <strong>${100-Number(nvmeUsed)}%</strong> `;
+                                if (nvme.Reads.length > 0) {
+                                    output += '(';
+                                    for (const nvmeRead of nvme.Reads) {
+                                        output += `已读${nvmeRead.replace(/ |,/gm, '')}`;
+                                        output += ')';
+                                    }
+                                }
+
+                                if (nvme.Writtens.length > 0) {
+                                    output = output.slice(0, -1);
+                                    output += ', ';
+                                    for (const nvmeWritten of nvme.Writtens) {
+                                        output += `已写${nvmeWritten.replace(/ |,/gm, '')}`;
+                                    }
+                                    output += ')';
+                                }
+                            }
                         }
+
                         if (nvme.Temperatures.length > 0) {
-                            out += ` | 温度: <strong>${nvme.Temperatures[0]}°C</strong>`;
+                            output += ' | ';
+                            for (const nvmeTemperature of nvme.Temperatures) {
+                                output += `温度: <strong>${nvmeTemperature}°C</strong>`;
+                            }
                         }
 
                         if (nvme.States.length > 0) {
                             if (nvme.Models.length > 0) {
-                                out += '\n';
+                                output += '\n';
                             }
 
-                            out += 'I/O: ';
+                            output += 'I/O: ';
                             if (nvme.r_kBs.length > 0 || nvme.r_awaits.length > 0) {
-                                out += '读-';
+                                output += '读-';
                                 if (nvme.r_kBs.length > 0) {
                                     for (const nvme_r_kB of nvme.r_kBs) {
                                         var nvme_r_mB = `${nvme_r_kB}` / 1024;
                                         nvme_r_mB = nvme_r_mB.toFixed(2);
-                                        out += `速度${nvme_r_mB}MB/s`;
+                                        output += `速度${nvme_r_mB}MB/s`;
                                     }
                                 }
                                 if (nvme.r_awaits.length > 0) {
                                     for (const nvme_r_await of nvme.r_awaits) {
-                                        out += `, 延迟${nvme_r_await}ms / `;
+                                        output += `, 延迟${nvme_r_await}ms / `;
                                     }
                                 }
                             }
 
                             if (nvme.w_kBs.length > 0 || nvme.w_awaits.length > 0) {
-                                out += '写-';
+                                output += '写-';
                                 if (nvme.w_kBs.length > 0) {
                                     for (const nvme_w_kB of nvme.w_kBs) {
                                         var nvme_w_mB = `${nvme_w_kB}` / 1024;
                                         nvme_w_mB = nvme_w_mB.toFixed(2);
-                                        out += `速度${nvme_w_mB}MB/s`;
+                                        output += `速度${nvme_w_mB}MB/s`;
                                     }
                                 }
                                 if (nvme.w_awaits.length > 0) {
                                     for (const nvme_w_await of nvme.w_awaits) {
-                                        out += `, 延迟${nvme_w_await}ms | `;
+                                        output += `, 延迟${nvme_w_await}ms | `;
                                     }
                                 }
                             }
 
                             if (nvme.utils.length > 0) {
                                 for (const nvme_util of nvme.utils) {
-                                    out += `负载${nvme_util}%`;
+                                    output += `负载${nvme_util}%`;
                                 }
                             }
                         }
 
                         if (nvme.Cycles.length > 0) {
-                            out += '\n';
+                            output += '\n';
                             for (const nvmeCycle of nvme.Cycles) {
-                                out += `通电: ${nvmeCycle.replace(/ |,/gm, '')}次`;
+                                output += `通电: ${nvmeCycle.replace(/ |,/gm, '')}次`;
                             }
 
                             if (nvme.Shutdowns.length > 0) {
-                                out += ', ';
+                                output += ', ';
                                 for (const nvmeShutdown of nvme.Shutdowns) {
-                                    out += `不安全断电${nvmeShutdown.replace(/ |,/gm, '')}次`;
+                                    output += `不安全断电${nvmeShutdown.replace(/ |,/gm, '')}次`;
                                     break
                                 }
                             }
 
                             if (nvme.Hours.length > 0) {
-                                out += ', ';
+                                output += ', ';
                                 for (const nvmeHour of nvme.Hours) {
-                                    out += `累计${nvmeHour.replace(/ |,/gm, '')}小时`;
+                                    output += `累计${nvmeHour.replace(/ |,/gm, '')}小时`;
                                 }
                             }
                         }
                     //output = output.slice(0, -3);
                 }
-                outputs.push(out);
+                outputs.push(output);
             }
             return outputs.length ? outputs.join('<br><br>') : '提示: 未安装 NVME 或已直通 NVME 控制器！';
         } else {
-            return '提示: 未安装 NVME 或已直通 NVME 控制器！';
+            return `提示: 未安装 NVME 或已直通 NVME 控制器！`;
         }
     }
 },
