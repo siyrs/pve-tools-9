@@ -29,11 +29,11 @@
 ### 🚪 开门见山
 #### 中国大陆网络
 ```
-bash <(curl -sSL https://ghfast.top/github.com/Mapleawaa/PVE-Tools-9/blob/main/PVE-Tools.sh)
+bash <(curl -sSL https://ghfast.top/github.com/siyrs/pve-tools-9/blob/main/PVE-Tools.sh)
 ```
 #### 国际网络
 ```
-bash <(curl -sSL https://github.com/Mapleawaa/PVE-Tools-9/blob/main/PVE-Tools.sh)
+bash <(curl -sSL https://github.com/siyrs/pve-tools-9/blob/main/PVE-Tools.sh)
 ```
 ---
 
