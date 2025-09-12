@@ -256,7 +256,7 @@ A: 请清除浏览器缓存或使用无痕模式访问。
 ```
 MIT License
 
-Copyright (c) 2025 Sovitx IO
+Copyright (c) 2025 Siyrs
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
