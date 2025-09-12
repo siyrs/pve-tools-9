@@ -1039,9 +1039,9 @@ EOF
                     const TIMELEFT= value.match(/TIMELEFT\s*:\s*([\d\.]+)/)[1];
                     const MODEL   = value.match(/MODEL\s*:\s*(.+)/)[1].trim();
 
-                    return `型号：${MODEL} ,状态：${STATUS} ,更新时间：${DATE}<br>
-                            电池电量：${BCHARGE} % 剩余供电时间：${TIMELEFT} 分钟<br>
-                            输出电压：${LINEV} V , 负载：${LOADPCT} %`;
+                    return `${MODEL}  | ${STATUS}  | ${DATE}<br>
+                            电量：${BCHARGE} %  | 剩余供电时间：${TIMELEFT} 分钟<br>
+                            电压：${LINEV} V  |  负载：${LOADPCT} %`;
                 } catch(e) {
                     return 'UPS 信息解析失败:' + value;
                 }
