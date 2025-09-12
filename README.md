@@ -43,11 +43,7 @@ PVE Tools 9 是专为 Proxmox VE 9.0 设计的一键配置工具，基于 Debian
 
 <div align="center">
 
-**脚本如果使用出现问题请直接发issue，我下课了会看并且修复**
-**如有好点子欢迎 PR！**
 
-更新日志
-[![Commits](https://img.shields.io/badge/Commits-查看提交历史-blue?style=flat-square&logo=github)](https://github.com/Mapleawaa/PVE-Tools-9/commits/)
 </div>
 
 ### ✨ 主要特性
@@ -264,43 +260,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-## 🙏 特别感谢
-
-### 🌟 贡献者
-
-- **Maple** - 项目创建者和主要维护者
-- **社区贡献者** - 感谢所有提供反馈和建议的用户
-- **xiangfeidexiaohuo** - 感谢他提供的传感器监控思路
-
-### 🏛️ 相关组织与项目
-
-- **[清华大学 TUNA 镜像站](https://mirrors.tuna.tsinghua.edu.cn/)** - 提供优质的镜像源服务
-- **[Proxmox VE 官方](https://www.proxmox.com/)** - 优秀的虚拟化平台
-- **[Debian 官方](https://www.debian.org/)** - 稳定可靠的系统基础
-
-### 💡 灵感来源
-
-- 感谢 PVE 社区的各位大佬分享的配置经验
-- 感谢代码参考：https://zhichao.org/posts/e0fe08
-- 参考了众多开源项目的最佳实践
-
-### 🎨 设计与界面
-
-- **ASCII 字符画** - 字符画设计灵感来源于社区创作
-- **配色方案** - 配色参考了现代终端美学
-
----
-
-<div align="center">
-
-### 🌟 如果这个项目对你有帮助，请给个 Star ⭐
-
-**用 ❤️ 由 AI Claude 4 和 Qwen3 联合打造**
-[**Qwen3** 是阿里云 Qwen 团队开发的大语言模型系列](https://github.com/QwenLM/Qwen3)
-
-[![GitHub](https://img.shields.io/badge/GitHub-SovitxNetworks-181717?logo=github&logoColor=white)](https://github.com/Mapleawaa)
-
-</div>
-
-C笔记

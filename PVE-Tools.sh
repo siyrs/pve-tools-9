@@ -3,7 +3,7 @@
 # PVE 9.0 配置工具脚本
 # 支持换源、删除订阅弹窗、硬盘管理等功能
 # 适用于 Proxmox VE 9.0 (基于 Debian 13)
-# Auther:Maple 二次修改使用请不要删除此段注释
+# Auther:siyrs 二次修改使用请不要删除此段注释
 
 # 颜色定义
 RED='\033[0;31m'
@@ -66,7 +66,7 @@ EOF
     echo -e "${NC}"
     echo -e "${YELLOW}                    PVE 9.0 一键配置神器${NC}"
     echo -e "${GREEN}                      让 PVE 配置变得简单快乐${NC}"
-    echo -e "${CYAN}                        作者: Maple & Claude 4${NC}"
+    echo -e "${CYAN}                        作者: siyrs${NC}"
     echo
 }
 
@@ -693,7 +693,20 @@ cpu_add() {
 
 
     # 获取硬盘信息
-    $res->{hdd_temperatures} = `smartctl -a /dev/sd?|grep -E "Device Model|Capacity|Power_On_Hours|Temperature"`;
+    my $hdd_data = "";
+    my @hdds = `smartctl --scan`;
+
+    foreach my $line (@hdds) {
+        if ($line =~ m#^(/dev/sd\w+) -d (\w+)#) {
+            my $dev = $1;
+            my $dtype = $2;
+            $hdd_data .= ">>> $dev\n";   # 加设备分隔符
+            my $info = `smartctl -a $dev 2>/dev/null | grep -E "Device Model|Vendor|User Capacity|Power_On_Hours|Temperature|Airflow_Temperature"`;
+            $hdd_data .= "$info\n";
+        }
+    }
+
+    $res->{hdd_temperatures} = $hdd_data;
 
     $res->{ups_status} = `apcaccess status`;
 
@@ -944,86 +957,63 @@ EOF
         }
     },
 
-
     // 检测不到相关参数的可以注释掉---需要的注释本行即可  */
-    // SATA 硬盘温度
+    // SATA硬盘温度
     {
         itemId: 'hdd-temperatures',
         colspan: 2,
         printBar: false,
         title: gettext('SATA硬盘'),
         textField: 'hdd_temperatures',
+        cellWrap: true,
         renderer: function(value) {
             if (value.length > 0) {
-               try {
-               const jsonData = JSON.parse(value);
-            if (jsonData.standy === true) {
-               return '休眠中';
-               }
-            let output = '';
-            if (jsonData.model_name) {
-            output = `<strong>${jsonData.model_name}</strong><br>`;
-                    if (jsonData.temperature?.current !== undefined) {
-                       output += `温度: <strong>${jsonData.temperature.current}°C</strong>`;
+                let outputs = [];
+
+                // 每个硬盘块以 >>> 开头分隔
+                let devices = value.split(/>>> /).filter(d => d.trim().length > 0);
+
+                for (const devInfo of devices) {
+                    // 硬盘路径（/dev/sdX）
+                    let devPathMatch = devInfo.match(/^(\S+)/);
+                    let devPath = devPathMatch ? devPathMatch[1] : "未知设备";
+
+                    // 型号
+                    let devModel = devInfo.match(/Device Model:\s*(.+)/);
+                    if (!devModel) {
+                        devModel = devInfo.match(/Vendor:\s*(.+)/);
                     }
-                    if (jsonData.power_on_time?.hours !== undefined) {
-                       if (output.length > 0) output += ' | ';
-                       output += `通电: ${jsonData.power_on_time.hours}小时`;
-                    if (jsonData.power_cycle_count) {
-                       output += `, 次数: ${jsonData.power_cycle_count}`;
-                       }
+                    let title = devModel ? devModel[1].trim() : devPath;
+
+                    // 容量
+                    let capacity = devInfo.match(/User Capacity:\s*(.+)/);
+                    capacity = capacity ? capacity[1].match(/\[(.*?)\]/)[1].trim() : "未知容量";
+
+                    // 通电小时
+                    let hours = devInfo.match(/Power_On_Hours.*- *(\d+)/);
+                    hours = hours ? hours[1] : "未知";
+
+                    // 温度（多种可能）
+                    let temp = devInfo.match(/Temperature_Celsius.*- *(\d+)/);
+                    if (!temp) {
+                        temp = devInfo.match(/Airflow_Temperature.*- *(\d+)/);
                     }
-                    if (jsonData.smart_status?.passed !== undefined) {
-                       if (output.length > 0) output += ' | ';
-                       output += 'SMART: ' + (jsonData.smart_status.passed ? '正常' : '警告!');
+                    if (!temp) {
+                        temp = devInfo.match(/Current Drive Temperature:\s*(\d+)/);
                     }
-                       return output;
-                       }
-                       } catch (e) {
-                    }
-                    let outputs = [];
-                    let devices = value.matchAll(/(\s*(Model|Device Model|Vendor).*:\s*[\s\S]*?\n){1,2}^User.*\[([\s\S]*?)\]\n^\s*9[\s\S]*?\-\s*([\d]+)[\s\S]*?(\n(^19[0,4][\s\S]*?$){1,2}|\s{0}$)/gm);
-                    for (const device of devices) {
-                    let devicemodel = '';
-                    if (device[1].indexOf("Family") !== -1) {
-                       devicemodel = device[1].replace(/.*Model Family:\s*([\s\S]*?)\n^Device Model:\s*([\s\S]*?)\n/m, '$1 - $2');
-                    } else if (device[1].match(/Vendor/)) {
-                       devicemodel = device[1].replace(/.*Vendor:\s*([\s\S]*?)\n^.*Model:\s*([\s\S]*?)\n/m, '$1 $2');
+                    let tempVal;
+                    if (temp && temp[1] !== "0") {
+                        tempVal = temp[1] + "°C";
                     } else {
-                       devicemodel = device[1].replace(/.*(Model|Device Model):\s*([\s\S]*?)\n/m, '$2');
+                        tempVal = "不支持温度监控";
                     }
-                    let capacity = device[3] ? device[3].replace(/ |,/gm, '') : "未知容量";
-                    let powerOnHours = device[4] || "未知";
-                    let deviceOutput = '';
-                    if (value.indexOf("Min/Max") !== -1) {
-                       let devicetemps = device[6]?.matchAll(/19[0,4][\s\S]*?\-\s*(\d+)(\s\(Min\/Max\s(\d+)\/(\d+)\)$|\s{0}$)/gm);
-                       for (const devicetemp of devicetemps || []) {
-                         deviceOutput = `<strong>${devicemodel}</strong><br>容量: ${capacity} | 已通电: ${powerOnHours}小时 | 温度: <strong>${devicetemp[1]}°C</strong>`;
-                         outputs.push(deviceOutput);
-                      }
-                    } else if (value.indexOf("Temperature") !== -1 || value.match(/Airflow_Temperature/)) {
-                       let devicetemps = device[6]?.matchAll(/19[0,4][\s\S]*?\-\s*(\d+)/gm);
-                    for (const devicetemp of devicetemps || []) {
-                       deviceOutput = `<strong>${devicemodel}</strong><br>容量: ${capacity} | 已通电: ${powerOnHours}小时 | 温度: <strong>${devicetemp[1]}°C</strong>`;
-                       outputs.push(deviceOutput);
-                    }
-                    } else {
-                       if (value.match(/\/dev\/sd[a-z]/)) {
-                           deviceOutput = `<strong>${devicemodel}</strong><br>容量: ${capacity} | 已通电: ${powerOnHours}小时 | 提示: 设备存在但未报告温度信息`;
-                           outputs.push(deviceOutput);
-                       } else {
-                           deviceOutput = `<strong>${devicemodel}</strong><br>容量: ${capacity} | 已通电: ${powerOnHours}小时 | 提示: 未检测到温度传感器`;
-                           outputs.push(deviceOutput);
-                       }
-                      }
-                    }
-                    if (!outputs.length && value.length > 0) {
-                       let fallbackDevices = value.matchAll(/(\/dev\/sd[a-z]).*?Model:([\s\S]*?)\n/gm);
-                       for (const fallbackDevice of fallbackDevices || []) {
-                         outputs.push(`${fallbackDevice[2].trim()}<br>提示: 设备存在但无法获取完整信息`);
-                       }
-                    }
-                    return outputs.length ? outputs.join('<br>') : '提示: 检测到硬盘但无法识别详细信息';
+
+                    // 输出
+                    let line = `<strong>${title}</strong><br>容量: ${capacity} | 通电: ${hours}小时 | 温度: <strong>${tempVal}</strong>`;
+                    outputs.push(line);
+                }
+
+                return `<div style="white-space: normal !important;overflow: visible !important;">${outputs.join('<br>')}</div>`;
             } else {
                 return '提示: 未安装硬盘或已直通硬盘控制器';
             }
@@ -1037,6 +1027,7 @@ EOF
         printBar: false,
         title: gettext('UPS 信息'),
         textField: 'ups_status',
+        cellWrap: true,
         renderer: function(value) {
             if (value.length > 0) {
                 try {
@@ -1048,13 +1039,9 @@ EOF
                     const TIMELEFT= value.match(/TIMELEFT\s*:\s*([\d\.]+)/)[1];
                     const MODEL   = value.match(/MODEL\s*:\s*(.+)/)[1].trim();
 
-                    return `型号：${MODEL}<br>
-                            更新时间：${DATE}<br>
-                            状态：${STATUS}<br>
-                            输出电压：${LINEV} V<br>
-                            负载：${LOADPCT} %<br>
-                            电池电量：${BCHARGE} %<br>
-                            剩余供电时间：${TIMELEFT} 分钟`;
+                    return `型号：${MODEL} ,状态：${STATUS} ,更新时间：${DATE}<br>
+                            电池电量：${BCHARGE} % 剩余供电时间：${TIMELEFT} 分钟<br>
+                            输出电压：${LINEV} V , 负载：${LOADPCT} %`;
                 } catch(e) {
                     return 'UPS 信息解析失败:' + value;
                 }
@@ -1063,7 +1050,6 @@ EOF
             }
         }
     },
-
 EOF
 
     log_info "找到关键字pveversion的行号"
