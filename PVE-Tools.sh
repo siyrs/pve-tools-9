@@ -663,9 +663,6 @@ cpu_add() {
     # ---------- begin nvme 多盘安全采集 ----------
     my $nvme_status = "";
 
-    # 获取 NVMe 硬盘信息
-    my $nvme_status = "";
-
     # 列出所有 nvme 设备
     my @nvmes = glob("/dev/nvme[0-9]n1");
 
@@ -725,129 +722,120 @@ EOF
     cat > $tmpf << 'EOF'
 
     {
-          itemId: 'CPUW',
-          colspan: 2,
-          printBar: false,
-          title: gettext('CPU功耗'),
-          textField: 'cpupower',
-          renderer:function(value){
-              const w0 = value.split('\n')[0].split(' ')[0];
-              const w1 = value.split('\n')[1].split(' ')[0];
-              return `CPU电源模式: <strong>${w0}</strong> | CPU功耗: <strong>${w1} W</strong> `
-          }
+        itemId: 'CPUW',
+        colspan: 2,
+        printBar: false,
+        title: gettext('CPU功耗'),
+        textField: 'cpupower',
+        renderer: function(value) {
+            const w0 = value.split('\n')[0].split(' ')[0];
+            const w1 = value.split('\n')[1].split(' ')[0];
+            return `CPU电源模式: <strong>${w0}</strong> | CPU功耗: <strong>${w1} W</strong>`;
+        }
     },
 
     {
-          itemId: 'MHz',
-          colspan: 2,
-          printBar: false,
-          title: gettext('CPU频率'),
-          textField: 'cpusensors',
-          renderer:function(value){
-              const f0 = value.match(/cpu MHz.*?([\d]+)/)[1];
-              const f1 = value.match(/CPU min MHz.*?([\d]+)/)[1];
-              const f2 = value.match(/CPU max MHz.*?([\d]+)/)[1];
-              return `CPU实时: <strong>${f0} MHz</strong> | 最小: ${f1} MHz | 最大: ${f2} MHz `
-          }
+        itemId: 'MHz',
+        colspan: 2,
+        printBar: false,
+        title: gettext('CPU频率'),
+        textField: 'cpusensors',
+        renderer: function(value) {
+            const f0 = value.match(/cpu MHz.*?([\d]+)/)[1];
+            const f1 = value.match(/CPU min MHz.*?([\d]+)/)[1];
+            const f2 = value.match(/CPU max MHz.*?([\d]+)/)[1];
+            return `CPU实时: <strong>${f0} MHz</strong> | 最小: ${f1} MHz | 最大: ${f2} MHz`;
+        }
     },
 
     {
-          itemId: 'thermal',
-          colspan: 2,
-          printBar: false,
-          title: gettext('CPU温度'),
-          textField: 'thermalstate',
-          renderer: function(value) {
-              const coreTemps = [];
-              let coreMatch;
-              const coreRegex = /(Core\s*\d+|Core\d+|Tdie|Tctl|Physical id\s*\d+).*?\+\s*([\d\.]+)/gi;
+        itemId: 'thermal',
+        colspan: 2,
+        printBar: false,
+        title: gettext('CPU温度'),
+        textField: 'thermalstate',
+        renderer: function(value) {
+            const coreTemps = [];
+            let coreMatch;
+            const coreRegex = /(Core\s*\d+|Core\d+|Tdie|Tctl|Physical id\s*\d+).*?\+\s*([\d\.]+)/gi;
 
-              while ((coreMatch = coreRegex.exec(value)) !== null) {
-                  let label = coreMatch[1];
-                  let tempValue = coreMatch[2];
+            while ((coreMatch = coreRegex.exec(value)) !== null) {
+                let label = coreMatch[1];
+                let tempValue = coreMatch[2];
 
-                  if (label.match(/Tdie|Tctl/i)) {
-                      coreTemps.push(`CPU温度: <strong>${tempValue}℃</strong>`);
-                  }
+                if (label.match(/Tdie|Tctl/i)) {
+                    coreTemps.push(`CPU温度: <strong>${tempValue}℃</strong>`);
+                } else {
+                    const coreNumberMatch = label.match(/\d+/);
+                    const coreNum = coreNumberMatch ? parseInt(coreNumberMatch[0]) + 1 : 1;
+                    coreTemps.push(`核心${coreNum}: <strong>${tempValue}℃</strong>`);
+                }
+            }
 
-                  else {
-                      const coreNumberMatch = label.match(/\d+/);
-                      const coreNum = coreNumberMatch ? parseInt(coreNumberMatch[0]) + 1 : 1;
-                      coreTemps.push(`核心${coreNum}: <strong>${tempValue}℃</strong>`);
-                  }
-              }
+            // 核显温度
+            let igpuTemp = '';
+            const intelIgpuMatch = value.match(/(GFX|Graphics).*?\+\s*([\d\.]+)/i);
+            const amdIgpuMatch = value.match(/(junction|edge).*?\+\s*([\d\.]+)/i);
 
-              // 核显温度
-              let igpuTemp = '';
-              const intelIgpuMatch = value.match(/(GFX|Graphics).*?\+\s*([\d\.]+)/i);
-              const amdIgpuMatch = value.match(/(junction|edge).*?\+\s*([\d\.]+)/i);
+            if (intelIgpuMatch) {
+                igpuTemp = `核显: ${intelIgpuMatch[2]}℃`;
+            } else if (amdIgpuMatch) {
+                igpuTemp = `核显: ${amdIgpuMatch[2]}℃`;
+            }
 
-              if (intelIgpuMatch) {
-                  igpuTemp = `核显: ${intelIgpuMatch[2]}℃`;
-              } else if (amdIgpuMatch) {
-                  igpuTemp = `核显: ${amdIgpuMatch[2]}℃`;
-              }
+            if (coreTemps.length === 0) {
+                const k10tempMatch = value.match(/k10temp-pci-\w+\n[^+]*\+\s*([\d\.]+)/);
+                if (k10tempMatch) {
+                    coreTemps.push(`CPU温度: <strong>${k10tempMatch[1]}℃</strong>`);
+                }
+            }
 
-              if (coreTemps.length === 0) {
-                  const k10tempMatch = value.match(/k10temp-pci-\w+\n[^+]*\+\s*([\d\.]+)/);
-                  if (k10tempMatch) {
-                      coreTemps.push(`CPU温度: <strong>${k10tempMatch[1]}℃</strong>`);
-                  }
-              }
+            const groupedTemps = [];
+            for (let i = 0; i < coreTemps.length; i += 4) {
+                groupedTemps.push(coreTemps.slice(i, i + 4).join(' | '));
+            }
 
-              const groupedTemps = [];
-              for (let i = 0; i < coreTemps.length; i += 4) {
-                  groupedTemps.push(coreTemps.slice(i, i + 4).join(' | '));
-              }
+            const packageMatch = value.match(/(Package|SoC)\s*(id \d+)?.*?\+\s*([\d\.]+)/i);
+            const packageTemp = packageMatch ? `CPU Package: <strong>${packageMatch[3]}℃</strong>` : '';
 
-              const packageMatch = value.match(/(Package|SoC)\s*(id \d+)?.*?\+\s*([\d\.]+)/i);
-              const packageTemp = packageMatch ? `CPU Package: <strong>${packageMatch[3]}℃</strong>` : '';
+            const boardTempMatch = value.match(/(?:temp1|motherboard|sys).*?\+\s*([\d\.]+)/i);
+            const boardTemp = boardTempMatch ? `主板: <strong>${boardTempMatch[1]}℃</strong>` : '';
 
-              const boardTempMatch = value.match(/(?:temp1|motherboard|sys).*?\+\s*([\d\.]+)/i);
-              const boardTemp = boardTempMatch ? `主板: <strong>${boardTempMatch[1]}℃</strong>` : '';
+            const combinedTemps = [igpuTemp, packageTemp, boardTemp].filter(Boolean).join(' | ');
 
-              const combinedTemps = [
-                  igpuTemp,
-                  packageTemp,
-                  boardTemp
-              ].filter(Boolean).join(' | ');
+            const result = [groupedTemps.join('<br>'), combinedTemps].filter(Boolean).join('<br>');
 
-              const result = [
-                  groupedTemps.join('<br>'),
-                  combinedTemps
-              ].filter(Boolean).join('<br>');
-
-              return result || '未获取到温度信息';
-          }
+            return result || '未获取到温度信息';
+        }
     },
 
     {
-          itemId: 'HEXIN',
-          colspan: 2,
-          printBar: false,
-          title: gettext('核心频率'),
-          textField: 'cpusensors',
-          renderer: function(value) {
-              const freqMatches = value.matchAll(/^cpu MHz\s*:\s*([\d\.]+)/gm);
-              const frequencies = [];
+        itemId: 'HEXIN',
+        colspan: 2,
+        printBar: false,
+        title: gettext('核心频率'),
+        textField: 'cpusensors',
+        renderer: function(value) {
+            const freqMatches = value.matchAll(/^cpu MHz\s*:\s*([\d\.]+)/gm);
+            const frequencies = [];
 
-              for (const match of freqMatches) {
-                  const coreNum = frequencies.length + 1;
-                  frequencies.push(`核心${coreNum}: <strong>${parseInt(match[1])} MHz</strong>`);
-              }
+            for (const match of freqMatches) {
+                const coreNum = frequencies.length + 1;
+                frequencies.push(`核心${coreNum}: <strong>${parseInt(match[1])} MHz</strong>`);
+            }
 
-              if (frequencies.length === 0) {
-                  return '无法获取CPU频率信息';
-              }
+            if (frequencies.length === 0) {
+                return '无法获取CPU频率信息';
+            }
 
-              const groupedFreqs = [];
-              for (let i = 0; i < frequencies.length; i += 4) {
-                  const group = frequencies.slice(i, i + 4);
-                  groupedFreqs.push(group.join(' | '));
-              }
+            const groupedFreqs = [];
+            for (let i = 0; i < frequencies.length; i += 4) {
+                const group = frequencies.slice(i, i + 4);
+                groupedFreqs.push(group.join(' | '));
+            }
 
-              return groupedFreqs.join('<br>');
-           }
+            return groupedFreqs.join('<br>');
+        }
     },
 
     /* 检测不到相关参数的可以注释掉---需要的注释本行即可
@@ -874,8 +862,7 @@ EOF
               return `CPU风扇: ${fan11} | 系统风扇: ${fan22}`
             }
     },
-
-
+    检测不到相关参数的可以注释掉---需要的注释本行即可  */
     // NVME 硬盘（多盘解析版）
     {
         itemId: 'nvme-status',
@@ -883,7 +870,7 @@ EOF
         printBar: false,
         title: gettext('NVME硬盘'),
         textField: 'nvme_status',
-        renderer:function(value){
+        renderer: function(value) {
             if (value.length > 0) {
                 value = value.replace(/Â/g, '');
                 let devices = value.split(/---/);
@@ -932,9 +919,8 @@ EOF
                     if (ioMatch) {
                         let ioArray = ioMatch[0].trim().split(/\s+/);
                         if (ioArray.length >= 22) {
-                            // 按 PVE9 的 iostat -x 输出列来取值
-                            let rMB = (parseFloat(ioArray[2]) / 1024).toFixed(2);  // rkB/s
-                            let wMB = (parseFloat(ioArray[3]) / 1024).toFixed(2);  // wkB/s
+                            let rMB = (parseFloat(ioArray[2]) / 1024).toFixed(2); // rkB/s
+                            let wMB = (parseFloat(ioArray[3]) / 1024).toFixed(2); // wkB/s
                             let rAwait = ioArray[6] || "?";   // r_await
                             let wAwait = ioArray[7] || "?";   // w_await
                             let util = ioArray[ioArray.length - 1] || "?"; // %util
@@ -950,6 +936,7 @@ EOF
                          通电: ${cycles}次, 不安全断电${unsafes}次, 累计${hours}小时`
                     );
                 }
+
                 return outputs.join('<br><br>');
             } else {
                 return '提示: 未安装 NVME 或已直通 NVME 控制器！';
@@ -959,8 +946,7 @@ EOF
 
 
     // 检测不到相关参数的可以注释掉---需要的注释本行即可  */
-
-    // SATA硬盘温度
+    // SATA 硬盘温度
     {
         itemId: 'hdd-temperatures',
         colspan: 2,
@@ -971,9 +957,9 @@ EOF
             if (value.length > 0) {
                try {
                const jsonData = JSON.parse(value);
-              if (jsonData.standy === true) {
-                 return '休眠中';
-                 }
+            if (jsonData.standy === true) {
+               return '休眠中';
+               }
             let output = '';
             if (jsonData.model_name) {
             output = `<strong>${jsonData.model_name}</strong><br>`;
@@ -1040,43 +1026,44 @@ EOF
                     return outputs.length ? outputs.join('<br>') : '提示: 检测到硬盘但无法识别详细信息';
             } else {
                 return '提示: 未安装硬盘或已直通硬盘控制器';
-        }
-    }
-},
-
-// UPS 信息
-{
-    itemId: 'ups-status',
-    colspan: 2,
-    printBar: false,
-    title: gettext('UPS 信息'),
-    textField: 'ups_status',
-    renderer: function(value) {
-        if (value.length > 0) {
-            try {
-                const DATE    = value.match(/DATE\s*:\s*([\d\-]+ \d+:\d+:\d+)/)[1];
-                const STATUS  = value.match(/STATUS\s*:\s*([A-Z]+)/)[1];
-                const LINEV   = value.match(/OUTPUTV\s*:\s*([\d\.]+)/)[1];
-                const LOADPCT = value.match(/LOADPCT\s*:\s*([\d\.]+)/)[1];
-                const BCHARGE = value.match(/BCHARGE\s*:\s*([\d\.]+)/)[1];
-                const TIMELEFT= value.match(/TIMELEFT\s*:\s*([\d\.]+)/)[1];
-                const MODEL   = value.match(/MODEL\s*:\s*(.+)/)[1].trim();
-
-                return `型号：${MODEL}<br>
-                        更新时间：${DATE}<br>
-                        状态：${STATUS}<br>
-                        输出电压：${LINEV} V<br>
-                        负载：${LOADPCT} %<br>
-                        电池电量：${BCHARGE} %<br>
-                        剩余供电时间：${TIMELEFT} 分钟`;
-            } catch(e) {
-                return 'UPS 信息解析失败:'+value;
             }
-        } else {
-            return '提示: 未检测到 UPS 或 apcaccess 未运行';
         }
-    }
-},
+    },
+
+    // UPS 信息
+    {
+        itemId: 'ups-status',
+        colspan: 2,
+        printBar: false,
+        title: gettext('UPS 信息'),
+        textField: 'ups_status',
+        renderer: function(value) {
+            if (value.length > 0) {
+                try {
+                    const DATE    = value.match(/DATE\s*:\s*([\d\-]+ \d+:\d+:\d+)/)[1];
+                    const STATUS  = value.match(/STATUS\s*:\s*([A-Z]+)/)[1];
+                    const LINEV   = value.match(/OUTPUTV\s*:\s*([\d\.]+)/)[1];
+                    const LOADPCT = value.match(/LOADPCT\s*:\s*([\d\.]+)/)[1];
+                    const BCHARGE = value.match(/BCHARGE\s*:\s*([\d\.]+)/)[1];
+                    const TIMELEFT= value.match(/TIMELEFT\s*:\s*([\d\.]+)/)[1];
+                    const MODEL   = value.match(/MODEL\s*:\s*(.+)/)[1].trim();
+
+                    return `型号：${MODEL}<br>
+                            更新时间：${DATE}<br>
+                            状态：${STATUS}<br>
+                            输出电压：${LINEV} V<br>
+                            负载：${LOADPCT} %<br>
+                            电池电量：${BCHARGE} %<br>
+                            剩余供电时间：${TIMELEFT} 分钟`;
+                } catch(e) {
+                    return 'UPS 信息解析失败:' + value;
+                }
+            } else {
+                return '提示: 未检测到 UPS 或 apcaccess 未运行';
+            }
+        }
+    },
+
 EOF
 
     log_info "找到关键字pveversion的行号"
